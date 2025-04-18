@@ -1,6 +1,6 @@
-from model.cfm import CFM
-from model.dit import DiT
-from model.trainer import Trainer
+from .cfm import CFM
+from .dit import DiT
+from .trainer import Trainer
 
 
 __all__ = ["CFM"]

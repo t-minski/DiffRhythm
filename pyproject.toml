@@ -27,8 +27,4 @@ Issues = "https://github.com/ASLP-lab/DiffRhythm/issues"
 files = ["requirements.txt"]
 
 [tool.hatch.build.targets.wheel]
-    packages = [
-        "diffrhythm/infer",
-        "diffrhythm/model",
-        "diffrhythm/dataset",
-    ]
+    packages = ["diffrhythm"]

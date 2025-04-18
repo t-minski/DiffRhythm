@@ -27,7 +27,7 @@ from huggingface_hub import hf_hub_download
 from sys import path
 path.append(os.getcwd())
 
-from model import DiT, CFM
+from ..model import DiT, CFM
 
 
 def decode_audio(latents, vae_model, chunked=False, overlap=32, chunk_size=128):

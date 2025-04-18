@@ -28,7 +28,7 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRotaryEmbedding
 from transformers.models.llama import LlamaConfig
 
-from model.modules import (
+from .modules import (
     TimestepEmbedding,
     ConvNeXtV2Block,
     ConvPositionEmbedding,
