@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling >= 1.26"]
+requires = ["hatchling >= 1.26", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [project]
@@ -17,7 +17,11 @@ classifiers = [
 ]
 license = "APACHE 2.0"
 license-files = ["LICENSE.md"]
+dynamic = ["dependencies"]
 
 [project.urls]
 Homepage = "https://diffrhythm.com/"
 Issues = "https://github.com/ASLP-lab/DiffRhythm/issues"
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
