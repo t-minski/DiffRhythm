@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-license = "APACHE 2.0"
+license = "Apache-2.0"
 license-files = ["LICENSE.md"]
 dynamic = ["dependencies"]
 
@@ -25,3 +25,9 @@ Issues = "https://github.com/ASLP-lab/DiffRhythm/issues"
 
 [tool.hatch.metadata.hooks.requirements_txt]
 files = ["requirements.txt"]
+
+[tool.hatch.build.targets.wheel]
+    packages = [
+        "src/infer",
+        "src/model"
+    ]
