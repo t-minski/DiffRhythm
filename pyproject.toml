@@ -1,3 +1,23 @@
 [build-system]
 requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
+
+[project]
+name = "diff_rhythm_tinski"
+version = "0.0.1"
+authors = [
+  { name="Tom Kaminski", email="t.bc.kaminski@gmail.com" },
+]
+description = "A python package for DiffRhythm"
+readme = "README.md"
+requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "APACHE 2.0"
+license-files = ["LICENSE.md"]
+
+[project.urls]
+Homepage = "https://diffrhythm.com/"
+Issues = "https://github.com/ASLP-lab/DiffRhythm/issues"
