@@ -28,6 +28,7 @@ files = ["requirements.txt"]
 
 [tool.hatch.build.targets.wheel]
     packages = [
-        "src/infer",
-        "src/model"
+        "diffrhythm/infer",
+        "diffrhythm/model",
+        "diffrhythm/dataset",
     ]
