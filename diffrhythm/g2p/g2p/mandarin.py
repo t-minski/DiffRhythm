@@ -8,8 +8,8 @@ import jieba
 import cn2an
 from pypinyin import lazy_pinyin, BOPOMOFO
 from typing import List
-from g2p.g2p.chinese_model_g2p import BertPolyPredict
-from g2p.utils.front_utils import *
+from .chinese_model_g2p import BertPolyPredict
+from ..utils.front_utils import *
 import os
 
 # from g2pw import G2PWConverter
@@ -19,7 +19,7 @@ import os
 BLANK_LEVEL = 0
 
 # conv = G2PWConverter(style='pinyin', enable_non_tradional_chinese=True)
-resource_path = r"./g2p"
+resource_path = f"{os.path.dirname(__file__)}/.."
 poly_all_class_path = os.path.join(
     resource_path, "sources", "g2p_chinese_model", "polychar.txt"
 )
@@ -183,7 +183,7 @@ must_not_er_words = {"女儿", "老儿", "男儿", "少儿", "小儿"}
 
 word_pinyin_dict = {}
 with open(
-    r"./g2p/sources/chinese_lexicon.txt", "r", encoding="utf-8"
+    f"{os.path.dirname(__file__)}/../sources/chinese_lexicon.txt", "r", encoding="utf-8"
 ) as fread:
     txt_list = fread.readlines()
     for txt in txt_list:
@@ -193,7 +193,7 @@ with open(
 
 pinyin_2_bopomofo_dict = {}
 with open(
-    r"./g2p/sources/pinyin_2_bpmf.txt", "r", encoding="utf-8"
+    f"{os.path.dirname(__file__)}/../sources/pinyin_2_bpmf.txt", "r", encoding="utf-8"
 ) as fread:
     txt_list = fread.readlines()
     for txt in txt_list:
@@ -212,7 +212,7 @@ tone_dict = {
 
 bopomofos2pinyin_dict = {}
 with open(
-    r"./g2p/sources/bpmf_2_pinyin.txt", "r", encoding="utf-8"
+    f"{os.path.dirname(__file__)}/../sources/bpmf_2_pinyin.txt", "r", encoding="utf-8"
 ) as fread:
     txt_list = fread.readlines()
     for txt in txt_list:

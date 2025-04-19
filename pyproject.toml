@@ -28,3 +28,8 @@ files = ["requirements.txt"]
 
 [tool.hatch.build.targets.wheel]
     packages = ["diffrhythm"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "diffrhythm/**"
+]

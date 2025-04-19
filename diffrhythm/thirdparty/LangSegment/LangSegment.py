@@ -31,9 +31,9 @@ from py3langid.langid import LanguageIdentifier, MODEL_FILE
 langid = LanguageIdentifier.from_pickled_model(MODEL_FILE, norm_probs=True)
 
 # Digital processing
-try:from thirdparty.LangSegment.utils.num import num2str
+try:from .utils.num import num2str
 except ImportError:
-    try:from thirdparty.LangSegment.utils.num import num2str
+    try:from .utils.num import num2str
     except ImportError as e:
         raise e
 

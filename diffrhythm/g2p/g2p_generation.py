@@ -6,8 +6,8 @@
 import os
 import sys
 
-from g2p.g2p import PhonemeBpeTokenizer
-from g2p.utils.g2p import phonemizer_g2p
+from .g2p import PhonemeBpeTokenizer
+from .utils.g2p import phonemizer_g2p
 import tqdm
 from typing import List
 import json
@@ -114,7 +114,7 @@ def chn_eng_g2p(text: str):
 
 
 text_tokenizer = PhonemeBpeTokenizer()
-with open("./g2p/g2p/vocab.json", "r", encoding='utf-8') as f:
+with open(f"{os.path.dirname(__file__)}/g2p/vocab.json", "r", encoding='utf-8') as f:
     json_data = f.read()
 data = json.loads(json_data)
 vocab = data["vocab"]

@@ -3,17 +3,18 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from g2p.g2p import cleaners
+from . import cleaners
 from tokenizers import Tokenizer
-from g2p.g2p.text_tokenizers import TextTokenizer
-from thirdparty.LangSegment import LangSegment
+from .text_tokenizers import TextTokenizer
+from ...thirdparty.LangSegment import LangSegment
 import json
 import re
+import os
 
 
 class PhonemeBpeTokenizer:
 
-    def __init__(self, vacab_path="./g2p/g2p/vocab.json"):
+    def __init__(self, vocab_path="./g2p/g2p/vocab.json"):
         self.lang2backend = {
             "zh": "cmn",
             "en": "en-us",
@@ -24,7 +25,7 @@ class PhonemeBpeTokenizer:
         self.text_tokenizers = {}
         self.int_text_tokenizers()
 
-        with open(vacab_path, "r", encoding='utf-8') as f:
+        with open(f"{os.path.dirname(__file__)}/vocab.json", "r", encoding='utf-8') as f:
             json_data = f.read()
         data = json.loads(json_data)
         self.vocab = data["vocab"]
