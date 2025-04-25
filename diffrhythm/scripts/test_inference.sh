@@ -13,5 +13,5 @@ python3 infer/infer.py \
     --ref-audio-path infer/example/eg_en.mp3 \
     --audio-length 95 \
     --repo_id ASLP-lab/DiffRhythm-full \
-    --output-dir infer/example/output \
+    --output-dir . \
     --chunked

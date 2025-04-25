@@ -29,6 +29,9 @@ path.append(os.getcwd())
 
 from ..model import DiT, CFM
 
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 def decode_audio(latents, vae_model, chunked=False, overlap=32, chunk_size=128):
     downsampling_ratio = 2048
@@ -90,7 +93,7 @@ def prepare_model(max_frames, device, repo_id="ASLP-lab/DiffRhythm-base"):
     dit_ckpt_path = hf_hub_download(
         repo_id=repo_id, filename="cfm_model.pt", cache_dir="./pretrained"
     )
-    dit_config_path = "./config/diffrhythm-1b.json"
+    dit_config_path = f"{PROJECT_ROOT}/config/diffrhythm-1b.json"
     with open(dit_config_path) as f:
         model_config = json.load(f)
     dit_model_cls = DiT
@@ -126,7 +129,7 @@ def get_reference_latent(device, max_frames):
 
 
 def get_negative_style_prompt(device):
-    file_path = "infer/example/vocal.npy"
+    file_path = f"{os.path.dirname(__file__)}/example/vocal.npy"
     vocal_stlye = np.load(file_path)
 
     vocal_stlye = torch.from_numpy(vocal_stlye).to(device)  # [1, 512]
