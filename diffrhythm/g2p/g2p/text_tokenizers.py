@@ -36,7 +36,7 @@ class TextTokenizer:
             with_stress=with_stress,
             tie=tie,
             language_switch=language_switch,
-            words_mismatch=words_mismatch,
+            words_mismatch="ignore",
         )
 
         self.separator = separator

@@ -15,7 +15,7 @@ import sys
 separator = Separator(word=" _ ", syllable="|", phone=" ")
 
 phonemizer_zh = EspeakBackend(
-    "cmn", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
+    "cmn", preserve_punctuation=False, with_stress=False, language_switch="remove-flags", words_mismatch="ignore"
 )
 # phonemizer_zh.separator = separator
 
@@ -24,11 +24,12 @@ phonemizer_en = EspeakBackend(
     preserve_punctuation=False,
     with_stress=False,
     language_switch="remove-flags",
+    words_mismatch="ignore",
 )
 # phonemizer_en.separator = separator
 
 phonemizer_ko = EspeakBackend(
-    "ko", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
+    "ko", preserve_punctuation=False, with_stress=False, language_switch="remove-flags", words_mismatch="ignore"
 )
 # phonemizer_ko.separator = separator
 
@@ -37,11 +38,12 @@ phonemizer_fr = EspeakBackend(
     preserve_punctuation=False,
     with_stress=False,
     language_switch="remove-flags",
+    words_mismatch="ignore",
 )
 # phonemizer_fr.separator = separator
 
 phonemizer_de = EspeakBackend(
-    "de", preserve_punctuation=False, with_stress=False, language_switch="remove-flags"
+    "de", preserve_punctuation=False, with_stress=False, language_switch="remove-flags", words_mismatch="ignore"
 )
 # phonemizer_de.separator = separator
 

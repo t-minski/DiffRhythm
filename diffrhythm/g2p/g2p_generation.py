@@ -5,6 +5,7 @@
 
 import os
 import sys
+from contextlib import redirect_stdout
 
 from .g2p import PhonemeBpeTokenizer
 from .utils.g2p import phonemizer_g2p
@@ -96,21 +97,23 @@ def get_segment(text: str) -> List[str]:
 
 
 def chn_eng_g2p(text: str):
-    # now only en and ch
-    segments = get_segment(text)
-    all_phoneme = ""
-    all_tokens = []
+    with open(os.devnull, "w") as fnull:
+        with redirect_stdout(fnull):
+            # now only en and ch
+            segments = get_segment(text)
+            all_phoneme = ""
+            all_tokens = []
 
-    for index in range(len(segments)):
-        seg = segments[index]
-        phoneme, token = g2p(seg[0], text, seg[1])
-        all_phoneme += phoneme + "|"
-        all_tokens += token
+            for index in range(len(segments)):
+                seg = segments[index]
+                phoneme, token = g2p(seg[0], text, seg[1])
+                all_phoneme += phoneme + "|"
+                all_tokens += token
 
-        if seg[1] == "en" and index == len(segments) - 1 and all_phoneme[-2] == "_":
-            all_phoneme = all_phoneme[:-2]
-            all_tokens = all_tokens[:-1]
-    return all_phoneme, all_tokens
+                if seg[1] == "en" and index == len(segments) - 1 and all_phoneme[-2] == "_":
+                    all_phoneme = all_phoneme[:-2]
+                    all_tokens = all_tokens[:-1]
+            return all_phoneme, all_tokens
 
 
 text_tokenizer = PhonemeBpeTokenizer()
