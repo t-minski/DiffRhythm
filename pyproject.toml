@@ -3,7 +3,7 @@ requires = ["hatchling >= 1.26", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [project]
-name = "diff_rhythm_tinski"
+name = "diffrhythm"
 version = "0.0.1"
 authors = [
   { name="Tom Kaminski", email="t.bc.kaminski@gmail.com" },
