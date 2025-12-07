@@ -263,6 +263,11 @@ class CFM(nn.Module):
         noise_scheduler: str | None = None,
         grad_ckpt = False,
         start_time = None,
+        x0: float["b n d"] | None = None,  # noqa: F722
+        x0_lens: int["b"] | None = None,  # noqa: F821
+        cond: float["b n d"] | None = None,  # noqa: F722
+        cond_lens: int["b"] | None = None,  # noqa: F821
+        **kwargs
     ):
 
         batch, seq_len, dtype, device, _σ1 = *inp.shape[:2], inp.dtype, self.device, self.sigma
@@ -278,14 +283,24 @@ class CFM(nn.Module):
         rand_span_mask = mask_from_frac_lengths(lens, frac_lengths, self.max_frames)
 
         if exists(mask):
+            # TODO: This is a bug in their code, rand_span_mask is never used since mask always exists
+            # This way their task doesn't match what's in their paper, i.e. random span infilling
+            # -> FIX THIS ONCE VARIANTS ARE STABLE
+            # Below they zero out everything outside of the valid lengths meaning nothing of the condition remains!
             rand_span_mask = mask
 
         # mel is x1
         x1 = inp
 
         # x0 is gaussian noise
-        x0 = torch.randn_like(x1)
-
+        if x0 is None:
+            # Use standard Gaussian noise as x0
+            x0 = torch.randn_like(x1)
+        else:
+            # Use the provided x0
+            assert x0.shape == x1.shape, "Provided x0 and inp must have the same shape"
+            x0 = x0
+            
         # time step
         time = torch.normal(mean=0, std=1, size=(batch,), device=self.device)
         time = torch.nn.functional.sigmoid(time)
@@ -297,7 +312,13 @@ class CFM(nn.Module):
         flow = x1 - x0
 
         # only predict what is within the random mask span for infilling
-        cond = torch.where(rand_span_mask[..., None], torch.zeros_like(x1), x1)
+        if cond is None:
+            # Create condition by masking out random spans of the target
+            cond = torch.where(rand_span_mask[..., None], torch.zeros_like(x1), x1)
+        else:
+            # Show full condition, but update mask so that loss is computed over everything except padding
+            cond = cond
+            rand_span_mask = lens_to_mask(cond_lens, length=seq_len)
 
         # transformer and cfg training with a drop rate
         drop_audio_cond = random() < self.audio_drop_prob  # p_drop in voicebox paper
