@@ -18,8 +18,13 @@
 """ This implementation is adapted from github repo:
     https://github.com/SWivid/F5-TTS.
 """
-
 from __future__ import annotations
+
+import jaxtyping as jx
+from typing import Literal
+from beartype import beartype
+import torch as th
+
 from typing import Callable
 from random import random
 
@@ -114,40 +119,148 @@ class CFM(nn.Module):
         return next(self.parameters()).device
 
     @torch.no_grad()
+    @jx.jaxtyped(typechecker=beartype)
     def sample(
         self,
-        cond: float["b n d"] | float["b nw"],  # noqa: F722
-        text: int["b nt"] | list[str],  # noqa: F722
-        duration: int | int["b"],  # noqa: F821
+        cond: jx.Float[th.Tensor, "B N D"] | jx.Float[th.Tensor, "B N"],
+        text: jx.Int[th.Tensor, "B N"] | list[str],
+        duration: int | jx.Int[th.Tensor, "B"],
         *,
-        style_prompt = None,
-        style_prompt_lens = None,
-        negative_style_prompt = None,
-        lens: int["b"] | None = None,  # noqa: F821
-        steps=32,
-        cfg_strength=4.0,
-        sway_sampling_coef=None,
+        style_prompt: jx.Float[th.Tensor, "B S"] | None = None,
+        negative_style_prompt: jx.Float[th.Tensor, "B S"] | None = None,
+        lens: jx.Int[th.Tensor, "B"] | None = None,
+        steps: int = 32,
+        cfg_strength: float = 4.0,
+        sway_sampling_coef: float | None = None,
         seed: int | None = None,
-        max_duration=6144,
-        vocoder: Callable[[float["b d n"]], float["b nw"]] | None = None,  # noqa: F722
-        no_ref_audio=False,
-        duplicate_test=False,
-        t_inter=0.1,
-        edit_mask=None,
-        start_time=None,
-        latent_pred_segments=None,
-        song_duration=None,
-        batch_infer_num=1
+        max_duration: int = 6144,
+        vocoder: Callable[
+            [jx.Float[th.Tensor, "B D N"]],
+            jx.Float[th.Tensor, "B N"]
+        ] | None = None,
+        no_ref_audio: bool = False,
+        duplicate_test: bool = False,
+        t_inter: float = 0.1,
+        edit_mask: jx.Bool[th.Tensor, "B N"] | None = None,
+        start_time: jx.Float[th.Tensor, "B"] | None = None,
+        latent_pred_segments: list[list[int]] | jx.Int[th.Tensor, "B 2"] | None = None,
+        song_duration: jx.Float[th.Tensor, "B"] | None = None,
+        batch_infer_num: int = 1,
+        x0: jx.Float[th.Tensor, "B N D"] | None = None,
+        mode: Literal[
+            "vanilla-diffrhythm",
+            "instrumental-to-vocals",
+            "instrumental-condition"
+        ] = "vanilla-diffrhythm"
     ):
+        """
+    Perform latent-space sampling with optional audio/text conditioning, style prompts,
+    classifier-free guidance, and span-based inpainting/editing. Behavior depends on
+    `mode` and `latent_pred_segments`.
+
+    Args:
+        cond (Tensor):
+            Conditioning audio. Shape `[B, T, D]` for latent features or `[B, N]` for raw
+            waveforms (which will be converted to mel-latents). Used as:
+            • audio context outside editable spans
+            • direct conditioning (if mode enables it, e.g. "instrumental-condition")
+            • overwritten back into output outside editable spans (unless spans cover all T)
+
+        text (Tensor | list[str]):
+            Text conditioning. Either:
+            • integer token tensor of shape `[B, Nt]`, or
+            • list of strings (converted internally to token ids).
+
+        duration (int | Tensor):
+            Target sequence length in frames. If int, a scalar duration applied to all
+            batch items. If per-item tensor `[B]`, defines variable-length generation.
+            Clamped to `max_duration`. Also sets the maximum diffusion integration length.
+
+        style_prompt (Tensor):
+            Style-conditioning embedding of shape `[B, Ds]`. Repeated for
+            `batch_infer_num` samples.
+
+        negative_style_prompt (Tensor):
+            Negative-prompt embedding used for classifier-free guidance. Same shape as
+            `style_prompt`.
+
+        lens (Tensor | None):
+            Lengths of the conditioning audio (before padding). Shape `[B]`. Used to
+            build masks for variable-length conditioning. If None, inferred from `cond`.
+
+        steps (int):
+            Number of ODE integration steps for the diffusion solver.
+
+        cfg_strength (float):
+            Classifier-free guidance scale. `0` disables CFG and uses the unconditional
+            prediction only.
+
+        sway_sampling_coef (float | None):
+            Optional temporal warping of ODE timesteps for "sway" sampling, modifying
+            the diffusion schedule.
+
+        seed (int | None):
+            Random seed for deterministic noise initialization. Applied *per duration*
+            element.
+
+        max_duration (int):
+            Upper bound on allowed sequence length. Prevents allocating absurdly large
+            latent tensors.
+
+        vocoder (Callable | None):
+            Optional vocoder that maps `[B, D, T]` latents → `[B, N]` waveform.
+            If None, returns latents directly.
+
+        no_ref_audio (bool):
+            If True, zeroes out the audio condition entirely.
+
+        duplicate_test (bool):
+            Special debugging mode that pads and blends `cond` into the initial noise
+            state to inspect intermediate integration behavior.
+
+        t_inter (float):
+            Blend factor used when `duplicate_test=True`.
+
+        edit_mask (Tensor | None):
+            Boolean mask `[B, T]` restricting editable regions. Combined with span masks.
+
+        start_time (Tensor):
+            Per-sample starting time annotations for the model.
+
+        latent_pred_segments (list[list[int]] | Tensor):
+            List of `[start, end]` pairs defining the spans where new content is
+            generated. These produce `fixed_span_mask`, controlling:
+            • zeroing of audio conditioning inside spans
+            • mixing of original vs. generated latents at the end.
+
+        song_duration (Tensor):
+            Per-sample total song duration used for positional conditioning.
+
+        batch_infer_num (int):
+            Number of parallel samples to draw from the same conditioning
+            configuration (i.e., "N candidates from 1 prompt"). Repeats all inputs.
+
+        x0 (Tensor | None):
+            Optional initial latent state `[B, T, D]`. If provided, diffusion starts
+            from `x0` instead of Gaussian noise. Used for instrumental→vocal bridging.
+            Requires mode to be "instrumental-to-vocals".
+
+        mode ({"vanilla-diffrhythm", "instrumental-to-vocals", "instrumental-condition"}):
+            Selects sampling behavior:
+            • "vanilla-diffrhythm": standard DiffRhythm generation/inpainting.
+            • "instrumental-to-vocals": Start the diffusion process at x0
+            • "instrumental-condition": uses instrumental latents as conditioning but
+              does not mix them back into the output.
+    """
         self.eval()
 
         if next(self.parameters()).dtype == torch.float16:
             cond = cond.half()
 
-        # raw wave
         if cond.shape[1] > duration:
             cond = cond[:, :duration, :]
 
+        # raw wave
         if cond.ndim == 2:
             cond = self.mel_spec(cond)
             cond = cond.permute(0, 2, 1)
@@ -165,15 +278,28 @@ class CFM(nn.Module):
                 text = list_str_to_tensor(text).to(device)
             assert text.shape[0] == batch
 
-        # duration
+        # duration and conditioning mask
         cond_mask = lens_to_mask(lens)
         if edit_mask is not None:
             cond_mask = cond_mask & edit_mask
 
-        latent_pred_segments = torch.tensor(latent_pred_segments).to(cond.device)
-        fixed_span_mask = custom_mask_from_start_end_indices(cond_seq_len, latent_pred_segments, device=cond.device, max_seq_len=duration)
-        fixed_span_mask = fixed_span_mask.unsqueeze(-1)
-        step_cond = torch.where(fixed_span_mask, torch.zeros_like(cond), cond)
+        # default: full-sequence prediction if no segments are given
+        if latent_pred_segments is None:
+            latent_pred_segments = [[0, duration]] * batch
+
+        latent_pred_segments = torch.tensor(latent_pred_segments, device=cond.device)
+        fixed_span_mask = custom_mask_from_start_end_indices(
+            cond_seq_len,
+            latent_pred_segments,
+            device=cond.device,
+            max_seq_len=duration
+        ).unsqueeze(-1)
+
+        if mode == "instrumental-condition":
+            step_cond = cond
+        else:
+            # Zero out conditioning inside editable spans
+            step_cond = torch.where(fixed_span_mask, torch.zeros_like(cond), cond)
 
         if isinstance(duration, int):
             duration = torch.full((batch_infer_num,), duration, device=device, dtype=torch.long)
@@ -183,17 +309,22 @@ class CFM(nn.Module):
 
         # duplicate test corner for inner time step oberservation
         if duplicate_test:
-            test_cond = F.pad(cond, (0, 0, cond_seq_len, max_duration - 2 * cond_seq_len), value=0.0)
+            test_cond = F.pad(
+                cond,
+                (0, 0, cond_seq_len, max_duration - 2 * cond_seq_len),
+                value=0.0
+            )
 
         if batch > 1:
             mask = lens_to_mask(duration)
         else:  # save memory and speed up, as single inference need no mask currently
             mask = None
 
-        # test for no ref audio
+        # optional: remove reference audio conditioning completely
         if no_ref_audio:
             cond = torch.zeros_like(cond)
 
+        # repeats become no-ops if batch_infer_num = 1
         cond = cond.repeat(batch_infer_num, 1, 1)
         step_cond = step_cond.repeat(batch_infer_num, 1, 1)
         text = text.repeat(batch_infer_num, 1)
@@ -218,15 +349,19 @@ class CFM(nn.Module):
             )
             return pred + (pred - null_pred) * cfg_strength
 
-        # noise input
-        # to make sure batch inference result is same with different batch size, and for sure single inference
-        # still some difference maybe due to convolutional layers
-        y0 = []
-        for dur in duration:
-            if exists(seed):
-                torch.manual_seed(seed)
-            y0.append(torch.randn(dur, self.num_channels, device=self.device, dtype=step_cond.dtype))
-        y0 = pad_sequence(y0, padding_value=0, batch_first=True)
+        # prepare initial state y0
+        if mode == "instrumental-to-vocals":
+            # start sampling from provided x0
+            assert x0 is not None, "x0 must be provided for instrumental-to-vocals mode"
+            y0 = x0
+        else:
+            # start from Gaussian noise
+            y0 = []
+            for dur in duration:
+                if exists(seed):
+                    torch.manual_seed(seed)
+                y0.append(torch.randn(dur, self.num_channels, device=self.device, dtype=step_cond.dtype))
+            y0 = pad_sequence(y0, padding_value=0, batch_first=True)
 
         t_start = 0
 
@@ -244,7 +379,13 @@ class CFM(nn.Module):
 
         sampled = trajectory[-1]
         out = sampled
-        out = torch.where(fixed_span_mask, out, cond)
+
+        if mode == "vanilla-diffrhythm":
+            out = torch.where(fixed_span_mask, out, cond)
+        else:
+            # Do not copy condition back to output if mode is
+            # "instrumental-to-vocals" or "instrumental-condition"
+            pass
 
         if exists(vocoder):
             out = out.permute(0, 2, 1)
@@ -258,15 +399,13 @@ class CFM(nn.Module):
         inp: float["b n d"] | float["b nw"],  # mel or raw wave  # noqa: F722
         text: int["b nt"] | list[str],  # noqa: F722
         style_prompt = None,
-        style_prompt_lens = None,
         lens: int["b"] | None = None,  # noqa: F821
         noise_scheduler: str | None = None,
         grad_ckpt = False,
         start_time = None,
         x0: float["b n d"] | None = None,  # noqa: F722
-        x0_lens: int["b"] | None = None,  # noqa: F821
         cond: float["b n d"] | None = None,  # noqa: F722
-        cond_lens: int["b"] | None = None,  # noqa: F821
+        mode: Literal["vanilla-diffrhythm", "instrumental-to-vocals", "instrumental-condition"] = "vanilla-diffrhythm",
         **kwargs
     ):
 
@@ -276,18 +415,18 @@ class CFM(nn.Module):
         if not exists(lens):
             lens = torch.full((batch,), seq_len, device=device)
 
-        mask = lens_to_mask(lens, length=seq_len)  # useless here, as collate_fn will pad to max length in batch
+        # True for valid frames, False for padding
+        padding_mask = lens_to_mask(lens, length=seq_len)  # useless here, as collate_fn will pad to max length in batch
 
         # get a random span to mask out for training conditionally
         frac_lengths = torch.zeros((batch,), device=self.device).float().uniform_(*self.frac_lengths_mask)
         rand_span_mask = mask_from_frac_lengths(lens, frac_lengths, self.max_frames)
 
-        if exists(mask):
-            # TODO: This is a bug in their code, rand_span_mask is never used since mask always exists
-            # This way their task doesn't match what's in their paper, i.e. random span infilling
-            # -> FIX THIS ONCE VARIANTS ARE STABLE
-            # Below they zero out everything outside of the valid lengths meaning nothing of the condition remains!
-            rand_span_mask = mask
+        if exists(padding_mask):
+            # NOTE: this is weird; rand_span_mask is never used and instead overwritten with padding_mask
+            # For in-filling task we would want to use rand_span_mask to zero out a random span
+            # Also see: Below they zero out everything outside of the valid lengths meaning nothing of the condition remains!
+            rand_span_mask = padding_mask
 
         # mel is x1
         x1 = inp
@@ -313,12 +452,15 @@ class CFM(nn.Module):
 
         # only predict what is within the random mask span for infilling
         if cond is None:
-            # Create condition by masking out random spans of the target
-            cond = torch.where(rand_span_mask[..., None], torch.zeros_like(x1), x1)
+            # NOTE: weird thing continues; note that the values for input and other should be changed
+            # For in-filling we would want to randomly show parts of the ground truth, i.e. x1/inp
+            # this is the other way around but works since they drop the in-filling task and mask out wherever there are valid frames
+            # Their original comment: "Create condition by masking out random spans of the target" is misleading!
+            cond = torch.where(rand_span_mask[..., None], input=torch.zeros_like(x1), other=x1)
         else:
             # Show full condition, but update mask so that loss is computed over everything except padding
             cond = cond
-            rand_span_mask = lens_to_mask(cond_lens, length=seq_len)
+            rand_span_mask = padding_mask
 
         # transformer and cfg training with a drop rate
         drop_audio_cond = random() < self.audio_drop_prob  # p_drop in voicebox paper
@@ -337,3 +479,4 @@ class CFM(nn.Module):
         loss = loss[rand_span_mask]
 
         return loss.mean(), cond, pred
+""
