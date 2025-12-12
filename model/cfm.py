@@ -147,7 +147,7 @@ class CFM(nn.Module):
         song_duration: jx.Float[th.Tensor, "B"] | None = None,
         batch_infer_num: int = 1,
         x0: jx.Float[th.Tensor, "B N D"] | None = None,
-        mode: Literal[
+        model_variant: Literal[
             "vanilla-diffrhythm",
             "instrumental-to-vocals",
             "instrumental-condition"
@@ -295,7 +295,7 @@ class CFM(nn.Module):
             max_seq_len=duration
         ).unsqueeze(-1)
 
-        if mode == "instrumental-condition":
+        if model_variant == "instrumental-condition":
             step_cond = cond
         else:
             # Zero out conditioning inside editable spans
@@ -350,7 +350,7 @@ class CFM(nn.Module):
             return pred + (pred - null_pred) * cfg_strength
 
         # prepare initial state y0
-        if mode == "instrumental-to-vocals":
+        if model_variant == "instrumental-to-vocals":
             # start sampling from provided x0
             assert x0 is not None, "x0 must be provided for instrumental-to-vocals mode"
             y0 = x0
@@ -380,7 +380,7 @@ class CFM(nn.Module):
         sampled = trajectory[-1]
         out = sampled
 
-        if mode == "vanilla-diffrhythm":
+        if model_variant == "vanilla-diffrhythm":
             out = torch.where(fixed_span_mask, out, cond)
         else:
             # Do not copy condition back to output if mode is
@@ -405,7 +405,7 @@ class CFM(nn.Module):
         start_time = None,
         x0: float["b n d"] | None = None,  # noqa: F722
         cond: float["b n d"] | None = None,  # noqa: F722
-        mode: Literal["vanilla-diffrhythm", "instrumental-to-vocals", "instrumental-condition"] = "vanilla-diffrhythm",
+        model_variant: Literal["vanilla-diffrhythm", "instrumental-to-vocals", "instrumental-condition"] = "vanilla-diffrhythm",
         **kwargs
     ):
 

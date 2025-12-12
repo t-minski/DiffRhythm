@@ -173,6 +173,14 @@ class DiT(nn.Module):
         start_time=None,
         duration=None
     ):
+        """
+        Args:
+            duration (FloatTensor | None):
+                Normalized segment duration relative to the model's `max_frames`,
+                shape `[B]`, in (0, 1]. Computed as `end_frame / max_frames`
+                from `get_lrc_token`. Only used when `self.max_frames == 6144`;
+                ignored (treated as zero) for 2048-frame models.
+        """
 
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:

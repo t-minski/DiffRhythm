@@ -364,6 +364,57 @@ class CNENTokenizer:
 
 
 def get_lrc_token(max_frames, text, tokenizer, max_secs, device):
+    """
+    Build a per-frame lyrics token sequence aligned to the latent frame rate,
+    plus normalized timing metadata.
+
+    Args:
+        max_frames (int):
+            Maximum number of latent frames for this clip. Typically matches the
+            model's `max_frames` (e.g. 2048 or 6144). All outputs are clipped
+            to this length.
+
+        text (str):
+            Raw lyrics text, expected to contain timestamps in LRC format
+            (e.g. "[00:12.34] line of lyrics").
+
+        tokenizer:
+            Tokenizer used for lyrics. Must provide `encode(str) -> list[int]`.
+            Token id `1` is treated as a comma token, `2` as a period token; all
+            periods in the lyrics lines are remapped to commas and an explicit
+            period token is appended at the end of each line.
+
+        max_secs (float):
+            Maximum wall-clock duration (in seconds) of lyrics to consider.
+            Any lyric line that starts at or after `max_secs` is discarded.
+
+        device (torch.device):
+            Device on which to place the resulting tensors.
+
+    Returns:
+        lrc_emb (LongTensor):
+            Frame-aligned lyrics token ids, shape `[1, end_frame]`. Each index
+            corresponds to one latent frame. Frames without lyrics are zero.
+
+        normalized_start_time (FloatTensor):
+            Scalar tensor `[1]` giving the normalized start time of this segment
+            in [0, 1], where 0 is the beginning of the full context window and
+            1 would be the end. Currently always 0.0, i.e. segments are assumed
+            to start at the beginning.
+
+        end_frame (int):
+            Index of the last latent frame considered. For `max_frames == 2048`
+            this is just 2048. Otherwise it is
+                int(max_secs * (sampling_rate / downsample_rate))
+            clipped to `max_frames`.
+
+        normalized_duration (FloatTensor):
+            Scalar tensor `[1]` giving the duration of this segment as a fraction
+            of the full context window:
+                normalized_duration = end_frame / max_frames  ∈ (0, 1].
+            This is later used as a conditioning value (`duration`) for the
+            diffusion transformer.
+    """
 
     lyrics_shift = 0
     sampling_rate = 44100
