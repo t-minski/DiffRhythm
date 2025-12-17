@@ -19,18 +19,17 @@
     https://github.com/SWivid/F5-TTS.
 """
 from __future__ import annotations
-
-import jaxtyping as jx
-from typing import Literal
-from beartype import beartype
-import torch as th
-
+import logging
 from typing import Callable
 from random import random
 
+import torch as th
+import jaxtyping as jx
+from typing import Literal
+from beartype import beartype
+
 import torch
 from torch import nn
-import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
@@ -43,6 +42,9 @@ from model.utils import (
     lens_to_mask,
     mask_from_frac_lengths,
 )
+
+logger = logging.getLogger(__name__)
+
 
 def custom_mask_from_start_end_indices(
     seq_len: int["b"],  # noqa: F821
@@ -431,14 +433,13 @@ class CFM(nn.Module):
         # mel is x1
         x1 = inp
 
-        # x0 is gaussian noise
-        if x0 is None:
-            # Use standard Gaussian noise as x0
-            x0 = torch.randn_like(x1)
-        else:
-            # Use the provided x0
+        if model_variant == "instrumental-to-vocals":
+            logger.debug("Using provided x0 as initial state")
             assert x0.shape == x1.shape, "Provided x0 and inp must have the same shape"
             x0 = x0
+        else:
+            logger.debug("Using standard Gaussian noise as x0")
+            x0 = torch.randn_like(x1)
             
         # time step
         time = torch.normal(mean=0, std=1, size=(batch,), device=self.device)
@@ -450,22 +451,55 @@ class CFM(nn.Module):
         φ = (1 - t) * x0 + t * x1
         flow = x1 - x0
 
-        # only predict what is within the random mask span for infilling
-        if cond is None:
-            # NOTE: weird thing continues; note that the values for input and other should be changed
-            # For in-filling we would want to randomly show parts of the ground truth, i.e. x1/inp
-            # this is the other way around but works since they drop the in-filling task and mask out wherever there are valid frames
-            # Their original comment: "Create condition by masking out random spans of the target" is misleading!
-            cond = torch.where(rand_span_mask[..., None], input=torch.zeros_like(x1), other=x1)
-        else:
+        if model_variant == "instrumental-condition":
             # Show full condition, but update mask so that loss is computed over everything except padding
             cond = cond
             rand_span_mask = padding_mask
+            logger.debug(f"""
+                Using provided cond as instrumental conditioning:
+                cond min/max: {cond.min().item()}/{cond.max().item()} (Should not be all zeros)
+                lens[0]: {lens[0].item()}
+                rand_span_mask[0]: {rand_span_mask[0].tolist()} (Should be all True except padding)
+            """)
 
-        # transformer and cfg training with a drop rate
-        drop_audio_cond = random() < self.audio_drop_prob  # p_drop in voicebox paper
-        drop_text = random() < self.lrc_drop_prob
-        drop_prompt = random() < self.style_drop_prob
+            # Validate condition
+            cond0 = cond[0]
+            assert not th.allclose(cond0, th.tensor(0.0)), f"""
+                Something is off with the condition:
+                cond0 min/max: {cond0.min().item()}/{cond0.max().item()}
+                Should not be all zeros since cond is provided as instrumental latents.
+            """
+            
+        else:
+            # NOTE: They don't use the original in-filling task here;
+            # instead they just zero out the whole condition within valid lengths
+            # the rest of it is already padding and thus zeroed as well
+            cond = torch.where(rand_span_mask[..., None], input=torch.zeros_like(x1), other=x1)
+            
+            # Validate condition
+            assert th.allclose(cond, th.tensor(0.0)), f"""
+                Something is off with the condition:
+                cond min/max: {cond.min().item()}/{cond.max().item()}
+                Should be all zeros since rand_span_mask[0] masks out everything within valid lengths.
+            """
+
+        # Validate mask
+        len0 = lens[0].item()
+        assert th.all(rand_span_mask[0, :len0]) and th.all(~rand_span_mask[0, len0:]), f"""
+            Something is off with the random span mask:
+            lens[0]: {lens[0].item()}
+            rand_span_mask[0]: {rand_span_mask[0].tolist()}
+        """
+
+        if self.training:
+            # transformer and cfg training with a drop rate
+            drop_audio_cond = random() < self.audio_drop_prob  # p_drop in voicebox paper
+            drop_text = random() < self.lrc_drop_prob
+            drop_prompt = random() < self.style_drop_prob
+        else:
+            drop_audio_cond = False
+            drop_text = False
+            drop_prompt = False
 
         # if want rigourously mask out padding, record in collate_fn in dataset.py, and pass in here
         # adding mask will use more memory, thus also need to adjust batchsampler with scaled down threshold for long sequences
@@ -479,4 +513,3 @@ class CFM(nn.Module):
         loss = loss[rand_span_mask]
 
         return loss.mean(), cond, pred
-""
